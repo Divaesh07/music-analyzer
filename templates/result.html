@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Analysis Result</title>
+  <style>
+    body { font-family: system-ui, Segoe UI, Arial, sans-serif; margin: 24px; color:#111; }
+    .container { max-width: 960px; margin: 0 auto; }
+    section { margin-bottom: 24px; }
+    .block { border: 1px solid #ddd; padding: 16px; border-radius: 6px; background:#fff; }
+    .row { display: flex; gap: 24px; align-items: flex-start; }
+    .col { flex: 1; }
+    .muted { opacity: 0.85; }
+    .label { font-weight: 600; }
+    .tag { background:#f5f5f7; padding:4px 8px; border-radius:12px; margin:2px; display:inline-block; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    ol { padding-left: 20px; }
+    @media (max-width: 800px) { .row { display:block; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    {% if curated %}
+    <section class="block">
+      <h3>Curated Analysis</h3>
+      <p>{{ curated.summary_text }}</p>
+      <div class="row">
+        <div class="col">
+          <p><span class="label">Dominant family:</span> {{ curated.dominant_family }}</p>
+          <p><span class="label">Confidence:</span> {{ curated.confidence }}</p>
+          <p><span class="label">VA quadrant:</span> {{ curated.va_quadrant }}</p>
+          {% if curated.stem_notes and curated.stem_notes|length > 0 %}
+            <p><span class="label">Mix notes:</span> {{ curated.stem_notes | join(', ') }}</p>
+          {% endif %}
+        </div>
+        <div class="col">
+          <p><span class="label">Fused genre:</span> {{ curated.genre.fused_top }}</p>
+          <p class="muted">(AST: {{ curated.genre.ast_top }} · MERT: {{ curated.genre.mert_top }})</p>
+          <p><span class="label">Valence/Arousal:</span>
+            {{ "%.2f"|format(curated.valence) if curated.valence is not none else "n/a" }}
+            /
+            {{ "%.2f"|format(curated.arousal) if curated.arousal is not none else "n/a" }}
+          </p>
+          <p><span class="label">Top moods:</span>
+            {% if curated.top_moods and curated.top_moods|length > 0 %}
+              {% for m in curated.top_moods %}
+                <span class="tag">{{ m.tag }} {{ "%0.2f"|format(m.prob) }}</span>
+              {% endfor %}
+            {% else %}
+              <span class="muted">no strong mood tags</span>
+            {% endif %}
+          </p>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="block">
+      <h3>Engineering Analysis</h3>
+      {% if engineering %}
+      <ol>
+        <li><span class="label">Genre Classification:</span> {{ genre.fused_top if genre else curated.genre.fused_top }}
+          <span class="muted">(AST: {{ (genre.ast_top if genre else curated.genre.ast_top) }} · MERT: {{ (genre.mert_top if genre else curated.genre.mert_top) }})</span>
+        </li>
+        <li><span class="label">Instrument Detection / Source Separation:</span>
+          {% if engineering.instrument_detection and engineering.instrument_detection|length>0 %}
+            {% for it in engineering.instrument_detection %}
+              <div>- {{ it.stem }}: {{ "present" if it.present else "absent" }}, rms {{ "%.4f"|format(it.rms) }}, tone {{ it.tone }}</div>
+            {% endfor %}
+          {% else %}<span class="muted">no stems</span>{% endif %}
+        </li>
+        <li><span class="label">Loudness Analysis:</span> {{ engineering.loudness.lufs }} LUFS · RMS {{ engineering.loudness.rms }} · Peak {{ engineering.loudness.peak }}</li>
+        <li><span class="label">Spectral Features:</span> brightness {{ engineering.spectral.brightness }}, boominess {{ engineering.spectral.boominess }}, noisiness {{ engineering.spectral.noisiness }}, tonal {{ engineering.spectral.tonal_index }}</li>
+        <li><span class="label">Dynamic Range Detection (crest):</span> {{ engineering.dynamic_range.crest_db }} dB</li>
+        <li><span class="label">Sibilance Detection:</span> {{ engineering.sibilance.grade }} ({{ engineering.sibilance.severity }})</li>
+        <li><span class="label">Masking Detection:</span>
+          {% if engineering.masking and engineering.masking|length>0 %}
+            {% for m in engineering.masking %}<div>- {{ m.pair }}: {{ m.overlap }}</div>{% endfor %}
+          {% else %}<span class="muted">n/a</span>{% endif %}
+        </li>
+        <li><span class="label">Stereo Width Analysis:</span> width {{ engineering.stereo.width }}, corr {{ engineering.stereo.corr }}, balance {{ engineering.stereo.balance_db }} dB ({{ engineering.stereo.note }})</li>
+        <li><span class="label">Tempo & Beat Detection:</span> {{ engineering.tempo.bpm }} BPM ({{ engineering.tempo.beats|length }} beats)</li>
+        <li><span class="label">Key Detection:</span> {{ engineering.key.key }} (conf {{ engineering.key.confidence }})</li>
+        <li><span class="label">Formant & Timbre:</span> {{ engineering.timbre.tag }} — warmth {{ engineering.timbre.warmth }}, air {{ engineering.timbre.air }}</li>
+        <li><span class="label">Clipping/Distortion:</span> {{ "YES" if engineering.clipping.flag else "no" }} · clipped {{ engineering.clipping.clipped_samples }} · crest {{ engineering.clipping.crest_db }} dB</li>
+        <li><span class="label">Presence / Air Estimation:</span> presence {{ engineering.presence_air.presence }} · air {{ engineering.presence_air.air }}</li>
+        <li><span class="label">Silence & Noise Floor:</span> noise floor {{ engineering.silence_noise.noise_floor_db }} dB · silence ratio {{ engineering.silence_noise.silence_ratio }}</li>
+        <li><span class="label">Transient Energy Analysis:</span> punch {{ engineering.transient.punch_score }} · sharpness {{ engineering.transient.sharpness }}</li>
+        <li><span class="label">Reverb / Room Tone:</span> {{ engineering.reverb.grade }} (late/early {{ engineering.reverb.late_early_db }} dB)</li>
+        <li><span class="label">Track Structure Detection:</span>
+          {% if engineering.structure and engineering.structure|length>0 %}
+            {% for s in engineering.structure %}<div>- {{ s.label }} @ {{ "%.2f"|format(s.time) }}s</div>{% endfor %}
+          {% else %}<span class="muted">n/a</span>{% endif %}
+        </li>
+      </ol>
+      {% else %}
+      <p class="muted">No engineering analysis found.</p>
+      {% endif %}
+    </section>
+
+    <section class="block">
+      <h3>Artifacts</h3>
+      {% if json_name %}
+        <p>JSON: <a href="{{ url_for('results_file', name=json_name) }}">{{ json_name }}</a></p>
+      {% else %}
+        <p class="muted">No JSON artifact available.</p>
+      {% endif %}
+      <p class="muted">Separated stems are saved under the "stems/" folder.</p>
+      <p><a href="{{ url_for('index') }}">Analyze another file</a></p>
+    </section>
+
+  </div>
+</body>
+</html>

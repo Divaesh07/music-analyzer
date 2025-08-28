@@ -1,0 +1,161 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Music Analyzer</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 20px; color:#111; }
+    .card { border:1px solid #ddd; border-radius:8px; padding:16px; margin:16px 0; background:#fff; }
+    .row { display:flex; gap:16px; flex-wrap:wrap; }
+    .col { flex:1 1 360px; }
+    .tag { background:#f2f2f2; padding:4px 8px; border-radius:12px; margin:2px; display:inline-block; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    h2 { margin: 8px 0; }
+    h3 { margin: 6px 0; }
+    .label { font-weight:600; }
+    .muted { opacity: 0.85; }
+    ol { padding-left: 20px; }
+    @media (max-width: 800px) { .row { display:block; } }
+  </style>
+</head>
+<body>
+  <h1>Music Analyzer</h1>
+
+  <form method="post" enctype="multipart/form-data" class="card">
+    <div>
+      <input type="file" name="audio" accept=".wav,.mp3" required>
+      <label style="margin-left:12px;">
+        <input type="checkbox" name="show_curated" value="1">
+        Show curated only
+      </label>
+    </div>
+    <div style="margin-top:8px;">
+      <button type="submit">Analyze</button>
+    </div>
+    <p style="color:#666; margin-top:6px;">Supports WAV/MP3. First run may take longer due to model downloads/initialization.</p>
+  </form>
+
+  {% if result %}
+  <div class="card">
+    <h2>Results</h2>
+
+    <div class="card" style="background:#fcfcff;">
+      <h3>Curated Analysis</h3>
+      <p>{{ result.curated.summary_text }}</p>
+      <div class="row">
+        <div class="col">
+          <p><span class="label">Dominant family:</span> {{ result.curated.dominant_family }}</p>
+          <p><span class="label">VA quadrant:</span> {{ result.curated.va_quadrant }}</p>
+          <p><span class="label">Confidence:</span> {{ result.curated.confidence }}</p>
+          {% if result.curated.stem_notes and result.curated.stem_notes|length>0 %}
+            <p><span class="label">Mix notes:</span> {{ result.curated.stem_notes | join(', ') }}</p>
+          {% endif %}
+        </div>
+        <div class="col">
+          <p><span class="label">Fused genre:</span> {{ result.curated.genre.fused_top }}
+             <span class="muted">(AST: {{ result.curated.genre.ast_top }} · MERT: {{ result.curated.genre.mert_top }})</span></p>
+          <p><span class="label">Valence/Arousal:</span>
+            {{ "%.2f"|format(result.curated.valence) if result.curated.valence is not none else "n/a" }} /
+            {{ "%.2f"|format(result.curated.arousal) if result.curated.arousal is not none else "n/a" }}
+          </p>
+          <p><span class="label">Top moods:</span>
+            {% if result.curated.top_moods and result.curated.top_moods|length>0 %}
+              {% for m in result.curated.top_moods %}
+                <span class="tag">{{ m.tag }} {{ "%0.2f"|format(m.prob) }}</span>
+              {% endfor %}
+            {% else %}
+              <span class="muted">no strong mood tags</span>
+            {% endif %}
+          </p>
+          <details>
+            <summary>Models used</summary>
+            <div class="mono">
+              Stems: {{ result.curated.models_used.stems }}<br>
+              Genre (AST): {{ result.curated.models_used.genre_ast }}<br>
+              Genre (MERT): {{ result.curated.models_used.genre_mert }}<br>
+              Emotions: {{ result.curated.models_used.emotion }}<br>
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    {% if not show_only_curated %}
+    <div class="row">
+      <div class="col">
+        <h3>Genre</h3>
+        <p>
+          Fused: <b>{{ result.genre.fused_top }}</b><br>
+          AST: {{ result.genre.ast_top }} · MERT: {{ result.genre.mert_top }}
+        </p>
+        <details>
+          <summary>Fusion probabilities</summary>
+          <div class="mono">
+            {% for lab, p in result.genre.fused_probs[:15] %}
+              {{ "%0.2f"|format(p) }} — {{ lab }}<br>
+            {% endfor %}
+          </div>
+        </details>
+      </div>
+      <div class="col">
+        <h3>Mood & Affect</h3>
+        <p>Valence: {{ "%.2f"|format(result.valence) if result.valence is not none else "n/a" }}
+           · Arousal: {{ "%.2f"|format(result.arousal) if result.arousal is not none else "n/a" }}</p>
+        <p>Top mood tags:</p>
+        <div>
+          {% if result.mood_tags and result.mood_tags|length > 0 %}
+            {% for tag, prob in result.mood_tags %}
+              <span class="tag">{{ tag }} {{ "%0.2f"|format(prob) }}</span>
+            {% endfor %}
+          {% else %}
+            <i>No mood tags available.</i>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h3>Engineering Analysis</h3>
+      <ol>
+        <li><span class="label">Genre Classification:</span> {{ result.genre.fused_top }} <span class="muted">(AST: {{ result.genre.ast_top }} · MERT: {{ result.genre.mert_top }})</span></li>
+        <li><span class="label">Instrument Detection / Source Separation:</span>
+          {% if result.engineering.instrument_detection and result.engineering.instrument_detection|length>0 %}
+            {% for it in result.engineering.instrument_detection %}
+              <div>- {{ it.stem }}: {{ "present" if it.present else "absent" }}, rms {{ "%.4f"|format(it.rms) }}, tone {{ it.tone }}</div>
+            {% endfor %}
+          {% else %}<span class="muted">no stems</span>{% endif %}
+        </li>
+        <li><span class="label">Loudness Analysis:</span> {{ result.engineering.loudness.lufs }} LUFS · RMS {{ result.engineering.loudness.rms }} · Peak {{ result.engineering.loudness.peak }}</li>
+        <li><span class="label">Spectral Features:</span> brightness {{ result.engineering.spectral.brightness }}, boominess {{ result.engineering.spectral.boominess }}, noisiness {{ result.engineering.spectral.noisiness }}, tonal {{ result.engineering.spectral.tonal_index }}</li>
+        <li><span class="label">Dynamic Range Detection (crest):</span> {{ result.engineering.dynamic_range.crest_db }} dB</li>
+        <li><span class="label">Sibilance Detection:</span> {{ result.engineering.sibilance.grade }} ({{ result.engineering.sibilance.severity }})</li>
+        <li><span class="label">Masking Detection:</span>
+          {% if result.engineering.masking and result.engineering.masking|length>0 %}
+            {% for m in result.engineering.masking %}<div>- {{ m.pair }}: {{ m.overlap }}</div>{% endfor %}
+          {% else %}<span class="muted">n/a</span>{% endif %}
+        </li>
+        <li><span class="label">Stereo Width Analysis:</span> width {{ result.engineering.stereo.width }}, corr {{ result.engineering.stereo.corr }}, balance {{ result.engineering.stereo.balance_db }} dB ({{ result.engineering.stereo.note }})</li>
+        <li><span class="label">Tempo & Beat Detection:</span> {{ result.engineering.tempo.bpm }} BPM ({{ result.engineering.tempo.beats|length }} beats)</li>
+        <li><span class="label">Key Detection:</span> {{ result.engineering.key.key }} (conf {{ result.engineering.key.confidence }})</li>
+        <li><span class="label">Formant & Timbre:</span> {{ result.engineering.timbre.tag }} — warmth {{ result.engineering.timbre.warmth }}, air {{ result.engineering.timbre.air }}</li>
+        <li><span class="label">Clipping/Distortion:</span> {{ "YES" if result.engineering.clipping.flag else "no" }} · clipped {{ result.engineering.clipping.clipped_samples }} · crest {{ result.engineering.clipping.crest_db }} dB</li>
+        <li><span class="label">Presence / Air Estimation:</span> presence {{ result.engineering.presence_air.presence }} · air {{ result.engineering.presence_air.air }}</li>
+        <li><span class="label">Silence & Noise Floor:</span> noise floor {{ result.engineering.silence_noise.noise_floor_db }} dB · silence ratio {{ result.engineering.silence_noise.silence_ratio }}</li>
+        <li><span class="label">Transient Energy Analysis:</span> punch {{ result.engineering.transient.punch_score }} · sharpness {{ result.engineering.transient.sharpness }}</li>
+        <li><span class="label">Reverb / Room Tone:</span> {{ result.engineering.reverb.grade }} (late/early {{ result.engineering.reverb.late_early_db }} dB)</li>
+        <li><span class="label">Track Structure Detection:</span>
+          {% if result.engineering.structure and result.engineering.structure|length>0 %}
+            {% for s in result.engineering.structure %}<div>- {{ s.label }} @ {{ "%.2f"|format(s.time) }}s</div>{% endfor %}
+          {% else %}<span class="muted">n/a</span>{% endif %}
+        </li>
+      </ol>
+    </div>
+
+    <p class="mono">File: {{ result.filename }}</p>
+    <p class="mono">JSON: {{ result.json_name }}</p>
+    <p class="mono">Separated stems are saved under the "stems/" folder.</p>
+  </div>
+  {% endif %}
+</body>
+</html>
